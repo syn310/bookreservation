@@ -408,14 +408,17 @@ public interface StockRepository extends CrudRepository<Stock, Long>{
 // 재고 서비스 입고
 1. http POST localhost:8082/stocks bookid="1" qty=5
 
+// 추천 서비스에서 도서 추천 목록 확인 (예약 건수를 확인할 수 있음)
+2. http localhost:8084/recommendations
+
 // 주문 서비스에서 입고된 책 주문
-2. http POST localhost:8081/reservations userid="user" bookid="1"
+3. http POST localhost:8081/reservations userid="user" bookid="1"
 
 // 주문 서비스에서 고객의 주문 상태가 '성공'임을 확인
-3. http GET localhost:8081/reservations/*
+4. http GET localhost:8081/reservations/*
 
 // 재고 서비스에서 고객이 주문한 책의 재고 감소를 확인
-4. http GET localhost:8082/stocks/*
+5. http GET localhost:8082/stocks/*
 
 // 고객 서비스 콘솔을 통해 고객의 주문이 정상적으로 완료 되었는지 확인
 
@@ -479,12 +482,12 @@ public interface ReservationRepository extends CrudRepository<Reservation, Long>
 }
 ```
 
-## 비동기식 호출 / 시간적 디커플링 / 장애격리 / 최종 (Eventual) 일관성 테스트
+## 비동기식 호출 / 시간적 디커플링 / 장애격리 / 최종 (Eventual) 일관성 테스트 : 개인 프로젝트 (추천 서비스)
 
 
-도서예약이 이루어진 후에 고객관리시스템으로 이를 알려주는 행위는 동기식이 아니라 비 동기식으로 처리하여 고객관리시스템의 처리를 위하여 도서예약이 블로킹 되지 않도록 처리한다.
+도서예약이 이루어진 후에 추천 서비스에 추천수를 업데이트 하는 행위는 동기식이 아니라 비동기식으로 처리하여 추천서비스 처리를 위하여 도서예약이 블로킹 되지 않도록 처리한다.
  
-- 이를 위하여 도서예약 기록을 남긴 후에 곧바로 예약 요청이 되었다는 도메인 이벤트를 카프카로 송출한다
+- 이를 위하여 도서예약/취소 기록을 남긴 후에 곧바로 예약/취소 요청이 되었다는 도메인 이벤트를 카프카로 송출한다
  
 ```
 package bookrental;
@@ -558,7 +561,7 @@ public class PolicyHandler{
 }
 
 ```
-이후, 재고 차감에 성공하고 예약이 완료되면 카톡 등으로 고객에게 카톡 등으로 알람을 보낸다. 
+이후, 재고 차감에 성공하고 예약이 완료되면 1) 카톡 등으로 고객에게 카톡 등으로 알람을 보낸다. 
   
 ```
     @Service
@@ -575,10 +578,27 @@ public class PolicyHandler{
     }
 
 ```
-
-도서예약 시스템은 고객관리(알람) 시스템와 완전히 분리되어있으며, 이벤트 수신에 따라 처리되기 때문에, 고객관리 시스템이 유지보수로 인해 잠시 내려간 상태라도 예약을 받는데 문제가 없다:
+2) 추천 서비스에 도서 추천수를 업데이트 한다.
 ```
-# 고객관리 서비스 (customer) 를 잠시 내려놓음 (ctrl+c)
+    @Service
+    public class PolicyHandler{
+
+        @StreamListener(KafkaProcessor.INPUT)
+        public void wheneverReserved_Orderresultalarm(@Payload Reserved reserved){
+
+            if(reserved.isMe()){
+                System.out.println("##### 예약 완료 되었습니다  #####" );//+ reserved.toJson());
+            }
+
+        }
+    }
+
+```
+
+
+도서예약 시스템은 추천 시스템과 완전히 분리되어있으며, 이벤트 수신에 따라 처리되기 때문에, 고객관리 시스템이 유지보수로 인해 잠시 내려간 상태라도 예약을 받는데 문제가 없다:
+```
+# 추천 서비스 (recommendation) 를 잠시 내려놓음 (ctrl+c)
 
 # 재고 서비스 : 입고
 1. http POST localhost:8082/stocks bookid="1" qty=5
@@ -589,16 +609,15 @@ public class PolicyHandler{
 # 예약 서비스 : 고객의 예약 상태가 '성공'임을 확인
 3. http GET localhost:8081/reservations/*
 
-# 예약 완료 알람이 오지 않음
-
-# 고객관리 서비스 기동
-4. cd customermanagement
+# 도서추천 서비스 기동
+4. cd recommendation
 mvn spring-boot:run
 
-# 고객관리 서비스 : 알람 확인
-5. "##### 예약 완료 되었습니다  #####"
-
+# 도서추천 서비스 : 도서 리스트 확인
 ```
+
+-- 스샷 첨부
+
 
 
 # 운영
